@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator'
 import type { Bindings } from "./bindings";
 import { createPrismaClient } from "./prisma";
 import { registerSchema } from "./schema";
+import { sign } from "hono/jwt";
 
 const app = new Hono<{ Bindings: Bindings }>();
 app.post("/register", zValidator("json", registerSchema), async (c) => {
@@ -71,7 +72,8 @@ app.post("/register", zValidator("json", registerSchema), async (c) => {
         c.env.JWT_SECRET,
     );
     return c.json({
-        userId: user.id
+        userId: user.id,
+        token: token,
     });
 });
 
