@@ -16,35 +16,60 @@ app.post("/register", zValidator("json", registerSchema), async (c) => {
             cpuSerialNumber: body.deviceData.cpuSerialNumber,
         },
     });
-    await prisma.userBodyData.create({
-        data: {
-            userId: user.id,
-            weight: body.userData.bodyData.weight,
-            height: body.userData.bodyData.height,
-            bodyFatPercentage: body.userData.bodyData.bodyFatPercentage,
-            gender: body.userData.bodyData.gender !== 0 ? "MALE" : "FEMALE"
-        },
-    });
-    await prisma.userLifecycle.create({
-        data: {
-            userId: user.id,
-            wakeUpTime: body.userData.lifeCycle.wakeUpTime,
-            sleepTime: body.userData.lifeCycle.sleepTime,
-        },
-    });
-    await prisma.userLikeFood.createMany({
-        data: body.userData.likes.likeFoods.map((food) => ({
-            userId: user.id,
-            food: food,
-        })),
-    });
-    await prisma.userLikeHobby.createMany({
-        data: body.userData.likes.likeHobbies.map((hobby) => ({
-            userId: user.id,
-            hobby: hobby,
-        })),
-    });
 
+    try {
+        await prisma.$transaction([
+            prisma.userBodyData.create({
+                data: {
+                    userId: user.id,
+                    weight: body.userData.bodyData.weight,
+                    height: body.userData.bodyData.height,
+                    bodyFatPercentage: body.userData.bodyData.bodyFatPercentage,
+                    gender: body.userData.bodyData.gender !== 0 ? "MALE" : "FEMALE",
+                },
+            }),
+            prisma.userLifecycle.create({
+                data: {
+                    userId: user.id,
+                    wakeUpTime: body.userData.lifeCycle.wakeUpTime,
+                    sleepTime: body.userData.lifeCycle.sleepTime,
+                },
+            }),
+            prisma.userLikeFood.createMany({
+                data: body.userData.likes.likeFoods.map((food) => ({
+                    userId: user.id,
+                    food: food,
+                })),
+            }),
+            prisma.userLikeHobby.createMany({
+                data: body.userData.likes.likeHobbies.map((hobby) => ({
+                    userId: user.id,
+                    hobby: hobby,
+                })),
+            }),
+        ]);
+    } catch {
+        await prisma.user.delete({
+            where: {
+                id: user.id,
+            },
+        });
+
+        return c.json({
+            message: "Failed to register user",
+        }, {
+            status: 500,
+        });
+    }
+
+    const token = await sign(
+        {
+            uid: user.id,
+            jti: crypto.randomUUID(),
+            nbf: Math.floor(Date.now() / 1000),
+        },
+        c.env.JWT_SECRET,
+    );
     return c.json({
         userId: user.id
     });
