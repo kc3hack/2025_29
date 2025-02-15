@@ -7,6 +7,9 @@
   "name": "diet-support",
   "main": "src/index.ts",
   "compatibility_date": "2025-02-14",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "observability": {
     "enabled": true
   },
