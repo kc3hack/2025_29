@@ -1,12 +1,14 @@
 import { Hono } from "hono";
 import { zValidator } from '@hono/zod-validator'
-import type { Bindings } from "./bindings";
 import { createPrismaClient } from "./prisma";
 import { analyzeSchema, refrigeratorSchema, registerSchema } from "./schema";
 import { sign } from "hono/jwt";
 import { auth } from "./auth";
 import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
+import { createS3Client } from "./s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -94,37 +96,76 @@ app.post("/analyze", zValidator("json", analyzeSchema), async (c) => {
         });
     }
 
+    const prisma = createPrismaClient(c);
     const body = c.req.valid("json");
+    // body.imageをbase64 decodeし、r2に保存する
+    // signed urlを取得して、OpenAIに送信する
+
+    const decoded = await fetch(`data:text/plain;charset=UTF-8;base64,${body.image}`)
+        .then(response => response.arrayBuffer());
+
+    const { id } = await prisma.userRefregiratorImage.create({
+        data: {
+            userId: userId
+        }
+    });
+    const s3 = createS3Client(c.env);
+    await s3.send(new PutObjectCommand({
+        Bucket: "diet-support-bucket",
+        Key: `${id}.jpg`,
+        Body: new Uint8Array(decoded),
+        ServerSideEncryption: "AES256",
+    }));
+
+    const signedUrl = await getSignedUrl(
+        s3,
+        new GetObjectCommand({ Bucket: "diet-support-bucket", Key: `${id}.jpg` }),
+        { expiresIn: 3600 }
+    );
+
     const client = new OpenAI({
         apiKey: c.env.OPENAI_API_KEY,
     });
-    const completion = await client.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-            {
-                role: "system",
-                content: "ユーザーから冷蔵庫の画像が与えれれますので、冷蔵庫に入っている食品を解析してください。",
-            },
-            {
-                role: "user",
-                content: [
-                    {
-                        // ラズパイ側ができたら、画像フォーマットが変わるかもしれない
-                        image_url: {
-                            url: `data:image/jpeg;base64,${body.image}`,
-                        },
-                        type: "image_url",
-                    }
-                ]
-            },
-        ],
-        response_format: zodResponseFormat(refrigeratorSchema, "foods"),
-    });
 
-    // biome-ignore lint/suspicious/noExplicitAny: <explanation>
-    const response = refrigeratorSchema.parse((completion.choices[0].message as any).parsed);
+    try {
+        const completion = await client.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+                {
+                    role: "system",
+                    content: "ユーザーから冷蔵庫の画像が与えれれますので、冷蔵庫に入っている食品を解析してください。食品名はは日本語で返してください。",
+                },
+                {
+                    role: "user",
+                    content: [
+                        {
+                            image_url: { url: signedUrl },
+                            type: "image_url",
+                        }
+                    ]
+                },
+            ],
+            response_format: zodResponseFormat(refrigeratorSchema, "foods"),
+        });
+        if (!completion.choices[0].message.content) {
+            return c.json({
+                message: "Failed to analyze image",
+            }, {
+                status: 500,
+            });
+        }
 
-    return c.json(response);
+        const response = refrigeratorSchema.parse(JSON.parse(completion.choices[0].message.content));
+
+        return c.json(response);
+    } catch (e) {
+        console.log(e);
+    } finally {
+        await s3.send(new DeleteObjectCommand({
+            Bucket: "diet-support-bucket",
+            Key: `${id}.jpg`,
+        }));
+    }
 });
 
 export default app;
