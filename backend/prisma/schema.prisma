@@ -19,6 +19,8 @@ model User {
     likeFood      UserLikeFood[]
     likeHobby     UserLikeHobby[]
     calorieIntake UserCalorieIntake[]
+
+    refregiratorImage UserRefregiratorImage[]
 }
 
 model UserLifecycle {
@@ -69,6 +71,14 @@ model UserCalorieIntake {
     date    DateTime
     calorie Int
     food    String
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserRefregiratorImage {
+    // keyは{id}.jpg
+    id     String @id @default(uuid())
+    userId String
 
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
