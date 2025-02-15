@@ -37,3 +37,15 @@ export const registerSchema = z.object({
         cpuSerialNumber: z.string(),
     }),
 });
+
+export const analyzeSchema = z.object({
+    // base64 encoded image
+    image: z.string(),
+});
+
+export const refrigeratorSchema = z.object({
+    foods: z.array(z.object({
+        name: z.string(),
+        calories: z.number(),
+    })),
+}); 

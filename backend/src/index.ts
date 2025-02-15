@@ -2,10 +2,15 @@ import { Hono } from "hono";
 import { zValidator } from '@hono/zod-validator'
 import type { Bindings } from "./bindings";
 import { createPrismaClient } from "./prisma";
-import { registerSchema } from "./schema";
+import { analyzeSchema, refrigeratorSchema, registerSchema } from "./schema";
 import { sign } from "hono/jwt";
+import { auth } from "./auth";
+import OpenAI from "openai";
+import { zodResponseFormat } from "openai/helpers/zod";
 
 const app = new Hono<{ Bindings: Bindings }>();
+
+// ユーザー情報を登録する
 app.post("/register", zValidator("json", registerSchema), async (c) => {
     const prisma = createPrismaClient(c);
     const body = c.req.valid("json");
@@ -76,6 +81,50 @@ app.post("/register", zValidator("json", registerSchema), async (c) => {
         userId: user.id,
         token: token,
     });
+});
+
+// 冷蔵庫の画像から食品一覧をOpenAI APIを使って取得する
+app.post("/analyze", zValidator("json", analyzeSchema), async (c) => {
+    const userId = await auth(c);
+    if (!userId) {
+        return c.json({
+            message: "Unauthorized",
+        }, {
+            status: 401,
+        });
+    }
+
+    const body = c.req.valid("json");
+    const client = new OpenAI({
+        apiKey: c.env.OPENAI_API_KEY,
+    });
+    const completion = await client.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+            {
+                role: "system",
+                content: "ユーザーから冷蔵庫の画像が与えれれますので、冷蔵庫に入っている食品を解析してください。",
+            },
+            {
+                role: "user",
+                content: [
+                    {
+                        // ラズパイ側ができたら、画像フォーマットが変わるかもしれない
+                        image_url: {
+                            url: `data:image/jpeg;base64,${body.image}`,
+                        },
+                        type: "image_url",
+                    }
+                ]
+            },
+        ],
+        response_format: zodResponseFormat(refrigeratorSchema, "foods"),
+    });
+
+    // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+    const response = refrigeratorSchema.parse((completion.choices[0].message as any).parsed);
+
+    return c.json(response);
 });
 
 export default app;
