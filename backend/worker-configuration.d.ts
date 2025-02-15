@@ -3,5 +3,8 @@
 interface Env {
 	JWT_SECRET: string;
 	OPENAI_API_KEY: string;
+	ACCOUNT_ID: string;
+	ACCESS_KEY_ID: string;
+	SECRET_ACCESS_KEY: string;
 	DB: D1Database;
 }
