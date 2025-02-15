@@ -35,6 +35,7 @@ model UserBodyData {
     userId            String
     weight            Float
     height            Float
+    bmi               Float
     bodyFatPercentage Float
     gender            Gender
 

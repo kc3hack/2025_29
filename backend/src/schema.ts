@@ -8,6 +8,7 @@ export const registerSchema = z.object({
             age: z.number(),
             weight: z.number(),
             height: z.number(),
+            BMI: z.number(),
             bodyFatPercentage: z.number(),
             gender: z.number(),
         }),
