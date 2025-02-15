@@ -26,6 +26,7 @@ app.post("/register", zValidator("json", registerSchema), async (c) => {
                     weight: body.userData.bodyData.weight,
                     height: body.userData.bodyData.height,
                     bodyFatPercentage: body.userData.bodyData.bodyFatPercentage,
+                    bmi: body.userData.bodyData.BMI,
                     gender: body.userData.bodyData.gender !== 0 ? "MALE" : "FEMALE",
                 },
             }),
