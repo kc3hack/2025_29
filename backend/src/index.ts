@@ -8,7 +8,7 @@ import { auth } from "./auth";
 import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Env }>();
 
 // ユーザー情報を登録する
 app.post("/register", zValidator("json", registerSchema), async (c) => {

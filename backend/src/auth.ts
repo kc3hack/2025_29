@@ -1,8 +1,7 @@
 import type { Context } from "hono";
-import type { Bindings } from "./bindings";
 import { verify } from "hono/jwt";
 
-export async function auth(c: Context<{ Bindings: Bindings }>) {
+export async function auth(c: Context<{ Bindings: Env }>) {
     const header = c.req.header("Authorization");
     if (!header) return null;
     if (!header.startsWith("Bearer ")) return null;
