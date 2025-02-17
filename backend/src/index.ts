@@ -7,6 +7,12 @@ import { auth } from "./auth";
 import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createS3Client, deleteImage, signedUrl, uploadImage } from "./s3";
+import { S3Client } from "@aws-sdk/client-s3";
+import { PrismaD1 } from "@prisma/adapter-d1";
+import { PrismaClient } from "@prisma/client";
+import { DefaultArgs } from "@prisma/client/runtime/library";
+import { HTTPException } from "hono/http-exception";
+import { analyzeImageDelta, analyzeImageFirstTime } from "./analyze";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -102,167 +108,43 @@ app.post("/analyze", zValidator("json", analyzeSchema), async (c) => {
     });
     const s3 = createS3Client(c.env);
 
-    try {
-        const status = await prisma.userFridgeLastStatus.findFirst({
-            where: {
-                userId: userId,
-            }
-        });
-        if (!status) {
-            const id = await uploadImage(s3, prisma, userId, body.image);
-            const url = await signedUrl(s3, id);
-            const completion = await client.chat.completions.create({
-                model: "gpt-4o",
-                messages: [
-                    {
-                        role: "system",
-                        content:
-                            "ユーザーから冷蔵庫の画像が与えれれますので、冷蔵庫に入っている食品を __なるべく詳細に__ 解析してください。食品名はは日本語にして、なるべく簡潔にして返してください。",
-                    },
-                    {
-                        role: "user",
-                        content: [
-                            {
-                                image_url: { url },
-                                type: "image_url",
-                            },
-                        ],
-                    },
-                ],
-                response_format: zodResponseFormat(
-                    refrigeratorSchema,
-                    "foods",
-                ),
-                seed: 0,
-            });
-            if (!completion.choices[0].message.content) {
-                return c.json(
-                    {
-                        message: "Failed to analyze image",
-                    },
-                    {
-                        status: 500,
-                    },
-                );
-            }
-
-            const response = refrigeratorSchema.parse(
-                JSON.parse(completion.choices[0].message.content),
-            );
-
-            await prisma.userFridgeLastStatus.create({
-                data: {
-                    userId: userId,
-                    status: JSON.stringify(response),
-                },
-            });
-
-            return c.json(response);
+    const status = await prisma.userFridgeLastStatus.findFirst({
+        where: {
+            userId: userId,
         }
-
-        const lastImage = await prisma.userRefregiratorImage.findFirstOrThrow({
-            where: {
-                userId: userId
-            },
+    });
+    if (!status) {
+        const response = await analyzeImageFirstTime({
+            s3,
+            prisma,
+            client,
+            userId,
+            image: body.image
         });
-        await prisma.userRefregiratorImage.delete({
-            where: {
-                id: lastImage.id,
-            },
-        });
-        const lastImageUrl = await signedUrl(s3, lastImage.id);
-        const id = await uploadImage(s3, prisma, userId, body.image);
-        const url = await signedUrl(s3, id);
-
-        const completion = await client.chat.completions.create({
-            model: "gpt-4o",
-            messages: [
-                {
-                    role: "system",
-                    content:
-                        `ユーザーから二つの冷蔵庫の画像と一つ目の画像の食品のリストが与えられます。
-                        この二つの画像を比べて、食品の差分を返してください。
-                        食品の名前などは与えられたリストを参考にしてください。`,
-                },
-                {
-                    role: "user",
-                    content: [
-                        {
-                            image_url: {
-                                url: lastImageUrl,
-                            },
-                            type: "image_url",
-                        },
-                        {
-                            image_url: { url },
-                            type: "image_url",
-                        },
-                        {
-                            type: "text",
-                            text: status.status,
-                        }
-                    ],
-                },
-            ],
-            response_format: zodResponseFormat(
-                refrigeratorDeltaSchema,
-                "foods",
-            ),
-            seed: 0,
-        });
-        await deleteImage(s3, lastImage.id);
-        if (!completion.choices[0].message.content) {
-            return c.json(
-                {
-                    message: "Failed to analyze image",
-                },
-                {
-                    status: 500,
-                },
-            );
-        }
-
-        console.log(completion.choices[0].message.content);
-        const response = refrigeratorDeltaSchema.parse(
-            JSON.parse(completion.choices[0].message.content),
-        );
-
-        // 差分から現在の状態を計算
-        const lastStatus = (JSON.parse(status.status) as { foods: { name: string, calories: number }[] }).foods;
-        let currentStatus = lastStatus.filter((food) => {
-            return !response.remove.some((remove) => {
-                return food.name === remove.name;
-            });
-        });
-        currentStatus = currentStatus.concat(response.add);
-
-        await prisma.userFridgeLastStatus.update({
-            where: {
-                id: status.id,
-            },
-            data: {
-                status: JSON.stringify({
-                    foods: currentStatus,
-                }),
-                date: new Date(Date.now()),
-            },
-        });
-        await prisma.userCalorieIntake.createMany({
-            data: response.remove.filter((x) => lastStatus.some((y) => x.name === y.name))
-                .map((food) => ({
-                    userId: userId,
-                    food: food.name,
-                    calorie: food.calories,
-                    date: new Date(Date.now()),
-                })),
-        });
-
-        return c.json({
-            foods: currentStatus,
-        });
-    } catch (e) {
-        console.log(e);
+        return c.json(response);
     }
+    const response = await analyzeImageDelta({
+        s3,
+        prisma,
+        client,
+        userId,
+        image: body.image,
+        status,
+    });
+    return c.json(response);
+});
+
+app.onError((err, c) => {
+    if (err instanceof HTTPException) {
+        return err.getResponse()
+    }
+
+    return c.json({
+        message: "Internal Server Error",
+    }, {
+        status: 500,
+    });
 });
 
 export default app;
+

@@ -37,8 +37,13 @@ export async function signedUrl(s3: S3Client, key: string) {
 }
 
 export async function deleteImage(s3: S3Client, key: string) {
-    await s3.send(new DeleteObjectCommand({
-        Bucket: "diet-support-bucket",
-        Key: key,
-    }));
+    try {
+        await s3.send(new DeleteObjectCommand({
+            Bucket: "diet-support-bucket",
+            Key: key,
+        }));
+        return true;
+    } catch {
+        return false;
+    }
 }
