@@ -49,3 +49,14 @@ export const refrigeratorSchema = z.object({
         calories: z.number(),
     })),
 }); 
+
+export const refrigeratorDeltaSchema = z.object({
+    add: z.array(z.object({
+        name: z.string(),
+        calories: z.number(),
+    })),
+    remove: z.array(z.object({
+        name: z.string(),
+        calories: z.number(),
+    })),
+}); 
