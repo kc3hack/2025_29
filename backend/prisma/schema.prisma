@@ -21,6 +21,8 @@ model User {
     calorieIntake UserCalorieIntake[]
 
     refregiratorImage UserRefregiratorImage[]
+
+    UserFridgeLastStatus UserFridgeLastStatus[]
 }
 
 model UserLifecycle {
@@ -79,6 +81,16 @@ model UserRefregiratorImage {
     // keyは{id}.jpg
     id     String @id @default(uuid())
     userId String
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserFridgeLastStatus {
+    id     String @id @default(uuid())
+    userId String
+    date   DateTime @default(now())
+    // JSON.stringifyしたもの
+    status String
 
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

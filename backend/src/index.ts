@@ -98,30 +98,6 @@ app.post("/analyze", zValidator("json", analyzeSchema), async (c) => {
 
     const prisma = createPrismaClient(c);
     const body = c.req.valid("json");
-    // body.imageをbase64 decodeし、r2に保存する
-    // signed urlを取得して、OpenAIに送信する
-
-    const decoded = await fetch(`data:text/plain;charset=UTF-8;base64,${body.image}`)
-        .then(response => response.arrayBuffer());
-
-    const { id } = await prisma.userRefregiratorImage.create({
-        data: {
-            userId: userId
-        }
-    });
-    const s3 = createS3Client(c.env);
-    await s3.send(new PutObjectCommand({
-        Bucket: "diet-support-bucket",
-        Key: `${id}.jpg`,
-        Body: new Uint8Array(decoded),
-        ServerSideEncryption: "AES256",
-    }));
-
-    const signedUrl = await getSignedUrl(
-        s3,
-        new GetObjectCommand({ Bucket: "diet-support-bucket", Key: `${id}.jpg` }),
-        { expiresIn: 3600 }
-    );
 
     const client = new OpenAI({
         apiKey: c.env.OPENAI_API_KEY,
@@ -133,19 +109,22 @@ app.post("/analyze", zValidator("json", analyzeSchema), async (c) => {
             messages: [
                 {
                     role: "system",
-                    content: "ユーザーから冷蔵庫の画像が与えれれますので、冷蔵庫に入っている食品を解析してください。食品名はは日本語で返してください。",
+                    content: "ユーザーから冷蔵庫の画像が与えれれますので、冷蔵庫に入っている食品を __なるべく詳細に__ 解析してください。食品名はは日本語で返してください。",
                 },
                 {
                     role: "user",
                     content: [
                         {
-                            image_url: { url: signedUrl },
+                            image_url: {
+                                url: `data:image/jpeg;base64,${body.image}`,
+                            },
                             type: "image_url",
                         }
                     ]
                 },
             ],
             response_format: zodResponseFormat(refrigeratorSchema, "foods"),
+            seed: 0,
         });
         if (!completion.choices[0].message.content) {
             return c.json({
@@ -157,14 +136,48 @@ app.post("/analyze", zValidator("json", analyzeSchema), async (c) => {
 
         const response = refrigeratorSchema.parse(JSON.parse(completion.choices[0].message.content));
 
+        const status = await prisma.userFridgeLastStatus.findFirst({
+            where: {
+                userId: userId,
+            }
+        });
+        if (!status) {
+            await prisma.userFridgeLastStatus.create({
+                data: {
+                    userId: userId,
+                    status: JSON.stringify(response),
+                },
+            });
+        }
+        else {
+            await prisma.userFridgeLastStatus.update({
+                where: {
+                    id: status.id,
+                },
+                data: {
+                    status: JSON.stringify(response),
+                    date: new Date(Date.now()),
+                },
+            });
+
+            const lastStatus = JSON.parse(status.status) as { foods: { name: string, calories: number }[] };
+            // 減ったぶんを計算
+            const diff = lastStatus.foods.filter((food) => !response.foods.some((newFood) => newFood.name === food.name));
+            if (diff.length > 0) {
+                await prisma.userCalorieIntake.createMany({
+                    data: diff.map((food) => ({
+                        userId: userId,
+                        food: food.name,
+                        calorie: food.calories,
+                        date: new Date(Date.now()),
+                    })),
+                });
+            }
+        }
+
         return c.json(response);
     } catch (e) {
         console.log(e);
-    } finally {
-        await s3.send(new DeleteObjectCommand({
-            Bucket: "diet-support-bucket",
-            Key: `${id}.jpg`,
-        }));
     }
 });
 
