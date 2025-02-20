@@ -1,0 +1,96 @@
+generator client {
+    provider        = "prisma-client-js"
+    previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+    provider = "sqlite"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    id              String @id @default(uuid())
+    name            String
+    nameKana        String
+    cpuSerialNumber String
+
+    lifecycle     UserLifecycle[]
+    bodyData      UserBodyData[]
+    likeFood      UserLikeFood[]
+    likeHobby     UserLikeHobby[]
+    calorieIntake UserCalorieIntake[]
+
+    refregiratorImage UserRefregiratorImage[]
+
+    UserFridgeLastStatus UserFridgeLastStatus[]
+}
+
+model UserLifecycle {
+    id         String   @id @default(uuid())
+    userId     String
+    wakeUpTime DateTime
+    sleepTime  DateTime
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserBodyData {
+    id                String @id @default(uuid())
+    userId            String
+    weight            Float
+    height            Float
+    bmi               Float
+    bodyFatPercentage Float
+    gender            Gender
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum Gender {
+    MALE
+    FEMALE
+}
+
+model UserLikeFood {
+    id     String @id @default(uuid())
+    userId String
+    food   String
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserLikeHobby {
+    id     String @id @default(uuid())
+    userId String
+    hobby  String
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserCalorieIntake {
+    id      String   @id @default(uuid())
+    userId  String
+    date    DateTime
+    calorie Int
+    food    String
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserRefregiratorImage {
+    // keyは{id}.jpg
+    id     String @id @default(uuid())
+    userId String
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserFridgeLastStatus {
+    id     String @id @default(uuid())
+    userId String
+    date   DateTime @default(now())
+    // JSON.stringifyしたもの
+    status String
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
