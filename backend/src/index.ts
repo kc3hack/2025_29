@@ -134,6 +134,30 @@ app.post("/analyze", zValidator("json", analyzeSchema), async (c) => {
     return c.json(response);
 });
 
+app.get("/calorie-intakes", async (c) => {
+    const userId = await auth(c);
+    if (!userId) {
+        return c.json({
+            message: "Unauthorized",
+        }, {
+            status: 401,
+        });
+    }
+
+    const prisma = createPrismaClient(c);
+    const calorieIntakes = await prisma.userCalorieIntake.findMany({
+        where: {
+            id: userId,
+        },
+    });
+
+    return c.json(calorieIntakes.map((calorieIntake) => ({
+        date: calorieIntake.date,
+        calorie: calorieIntake.calorie,
+        food: calorieIntake.food,
+    })));
+});
+
 app.onError((err, c) => {
     if (err instanceof HTTPException) {
         return err.getResponse()
