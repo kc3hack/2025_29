@@ -30,10 +30,11 @@ jobs:
         id: cloudflare-wrangler
         uses: cloudflare/wrangler-action@v3
         with:
+          workingDirectory: ./backend
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           command: deploy
-          secrets: |
+          vars: |
             JWT_SECRET
             OPENAI_API_KEY
             ACCOUNT_ID
