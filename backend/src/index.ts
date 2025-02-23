@@ -158,6 +158,51 @@ app.get("/calorie-intakes", async (c) => {
     })));
 });
 
+app.delete("/calorie-intakes", async (c) => {
+    const userId = await auth(c);
+    if (!userId) {
+        return c.json(
+            {
+                message: "Unauthorized",
+            },
+            {
+                status: 401,
+            },
+        );
+    }
+
+    const prisma = createPrismaClient(c);
+    const s3 = createS3Client(c.env);
+    await prisma.userCalorieIntake.deleteMany({
+        where: {
+            id: userId,
+        },
+    });
+    await prisma.userFridgeLastStatus.deleteMany({
+        where: {
+            userId: userId,
+        },
+    });
+
+    const imgs = await prisma.userRefregiratorImage.findMany({
+        where: {
+            userId: userId,
+        },
+    });
+    await Promise.all(imgs.map(async (img) => {
+        await deleteImage(s3, img.id);
+    }));
+    await prisma.userRefregiratorImage.deleteMany({
+        where: {
+            userId: userId,
+        },
+    });
+
+    return c.json({
+        message: "データを削除しました",
+    });
+});
+
 app.onError((err, c) => {
     if (err instanceof HTTPException) {
         return err.getResponse()
