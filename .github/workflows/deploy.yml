@@ -1,0 +1,47 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        run: npm install
+        working-directory: ./backend
+
+      - name: Deploy
+        id: cloudflare-wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: deploy
+          secrets: |
+            JWT_SECRET
+            OPENAI_API_KEY
+            ACCOUNT_ID
+            ACCESS_KEY_ID
+            SECRET_ACCESS_KEY
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
+          ACCESS_KEY_ID: ${{ secrets.ACCESS_KEY_ID }}
+          SECRET_ACCESS_KEY: ${{ secrets.SECRET_ACCESS_KEY }}
