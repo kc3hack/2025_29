@@ -1,0 +1,6 @@
+[submodule "frontend/dietSupport"]
+	path = frontend/dietSupport
+	url = git@github.com:Greatnishioka/dietSupport.git
+[submodule "frontend/diet-support-gui"]
+	path = frontend/diet-support-gui
+	url = git@github.com:Greatnishioka/diet-support-gui.git
